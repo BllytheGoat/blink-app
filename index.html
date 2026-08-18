@@ -8,8 +8,7 @@
     <title>Blink</title>
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23171717' width='192' height='192'/><text x='50%' y='50%' font-size='120' fill='white' text-anchor='middle' dominant-baseline='middle' font-weight='600'>B</text></svg>">
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23171717' width='192' height='192' rx='48'/><text x='50%' y='50%' font-size='120' fill='white' text-anchor='middle' dominant-baseline='middle' font-weight='600'>B</text></svg>">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -151,6 +150,7 @@
             flex-direction: column;
             gap: 24px;
             align-self: stretch;
+            max-width: 400px;
         }
 
         .display-md {
@@ -174,10 +174,6 @@
         .drop-zone.dragging {
             border-color: var(--link);
             background-color: rgba(0, 112, 243, 0.05);
-        }
-
-        .drop-zone.dragging, .drop-zone:hover {
-            border-color: var(--link);
         }
 
         .file-list {
@@ -210,7 +206,7 @@
 
         input[type="file"], input[type="text"] {
             width: 100%;
-            padding: 12px 12px;
+            padding: 12px;
             border: 1px solid var(--hairline);
             border-radius: 6px;
             font-family: var(--font-sans);
@@ -252,7 +248,7 @@
             background-color: var(--canvas);
             border-radius: 8px;
             padding: 32px;
-            max-width: 400px;
+            max-width: 420px;
             width: 100%;
             display: flex;
             flex-direction: column;
@@ -278,31 +274,34 @@
         }
 
         .qr-display {
-            width: 200px;
-            height: 200px;
+            width: 220px;
+            height: 220px;
             border: 1px solid var(--hairline);
             border-radius: 8px;
             display: flex;
             align-items: center;
             justify-content: center;
             background-color: white;
-            padding: 8px;
+            padding: 12px;
         }
 
-        #qrcode {
-            max-width: 100%;
-            height: auto;
+        #qrcode canvas {
+            width: 100%;
+            height: 100%;
+            image-rendering: pixelated;
         }
 
         .code-display {
             font-family: var(--font-mono);
-            font-size: 14px;
-            letter-spacing: 2px;
+            font-size: 16px;
+            font-weight: 600;
+            letter-spacing: 3px;
             background-color: var(--canvas-soft);
-            padding: 12px;
+            padding: 12px 16px;
             border-radius: 6px;
             word-break: break-all;
             user-select: all;
+            text-transform: uppercase;
         }
 
         .progress-section {
@@ -313,9 +312,9 @@
 
         .progress-bar {
             width: 100%;
-            height: 4px;
+            height: 6px;
             background-color: var(--hairline);
-            border-radius: 2px;
+            border-radius: 3px;
             overflow: hidden;
         }
 
@@ -340,17 +339,18 @@
             overflow-y: auto;
             font-family: var(--font-mono);
             font-size: 11px;
+            text-align: left;
         }
 
         .log-line {
             color: var(--mute);
-            margin: 2px 0;
+            margin: 3px 0;
             word-break: break-all;
         }
 
         .done-message {
             text-align: center;
-            color: var(--link);
+            color: #00aa55;
             font-weight: 600;
             font-size: 18px;
         }
@@ -372,14 +372,16 @@
             background: none;
             border: 1px solid var(--hairline);
             color: var(--ink);
-            padding: 6px 12px;
+            padding: 8px 16px;
             border-radius: 4px;
             font-size: 12px;
             cursor: pointer;
+            transition: all 0.2s;
         }
 
         .copy-btn:hover {
             background-color: var(--canvas-soft);
+            border-color: var(--link);
         }
 
         @media (max-width: 600px) {
@@ -398,6 +400,10 @@
 
             .cta-row {
                 flex-direction: column;
+            }
+
+            .view {
+                max-width: 100%;
             }
         }
     </style>
@@ -448,10 +454,8 @@
             <div id="qr-section" class="qr-section">
                 <p class="caption-mono">Transfer Code</p>
                 <div class="qr-display" id="qr-display"></div>
-                <div style="display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center;">
-                    <div class="code-display" id="code-display"></div>
-                    <button class="copy-btn" onclick="copyCode()">Copy</button>
-                </div>
+                <div class="code-display" id="code-display">-</div>
+                <button class="copy-btn" onclick="copyCode()">📋 Copy Code</button>
             </div>
 
             <div class="progress-section">
@@ -463,7 +467,7 @@
 
             <div class="logs" id="logs"></div>
 
-            <p id="done-message" class="done-message" style="display: none;">✓ Complete</p>
+            <p id="done-message" class="done-message" style="display: none;">✓ Transfer Complete</p>
 
             <button class="button-secondary" id="cancel-btn" onclick="cancelTransfer()">Cancel</button>
         </div>
@@ -472,7 +476,6 @@
     <input type="file" id="file-input" multiple onchange="handleFileInput(event)">
 
     <script>
-        const CROC_RELAY = "https://croc.schollz.com";
         let selectedFiles = [];
         let currentCode = null;
 
@@ -536,9 +539,9 @@
         async function startSend() {
             if (selectedFiles.length === 0) return;
 
-            // Generate a random code (Croc style: 6-char words)
-            const words = ['apple', 'beach', 'cabin', 'dance', 'eagle', 'frame', 'grace', 'honey', 'index', 'jungle'];
-            const code = Array.from({length: 3}, () => words[Math.floor(Math.random() * words.length)]).join('-');
+            // Generate a realistic Croc code (6 uppercase alphanumeric)
+            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const code = Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
             currentCode = code;
 
             document.getElementById('transfer-modal').classList.add('active');
@@ -554,14 +557,14 @@
             addLog('Generating QR code...');
 
             // Generate QR code
-            generateQR(code);
+            setTimeout(() => generateQR(code), 100);
 
-            addLog(`Waiting for receiver...`);
-            addLog(`Relay: ${CROC_RELAY}`);
+            addLog('Waiting for receiver...');
+            addLog('Public relay: croc.schollz.com');
 
             // Simulate transfer progress
             for (let i = 0; i <= 100; i += 10) {
-                await new Promise(resolve => setTimeout(resolve, 500));
+                await new Promise(resolve => setTimeout(resolve, 400));
                 document.getElementById('progress-fill').style.width = i + '%';
                 document.getElementById('progress-text').textContent = i + '%';
                 if (i === 50) addLog('Files transferring...');
@@ -585,10 +588,10 @@
 
             addLog(`Receive code: ${code}`);
             addLog('Connecting to sender...');
-            addLog(`Relay: ${CROC_RELAY}`);
+            addLog('Public relay: croc.schollz.com');
 
             for (let i = 0; i <= 100; i += 15) {
-                await new Promise(resolve => setTimeout(resolve, 400));
+                await new Promise(resolve => setTimeout(resolve, 300));
                 document.getElementById('progress-fill').style.width = i + '%';
                 document.getElementById('progress-text').textContent = i + '%';
                 if (i === 50) addLog('Receiving files...');
@@ -602,7 +605,7 @@
             const logs = document.getElementById('logs');
             const line = document.createElement('p');
             line.className = 'log-line';
-            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            line.textContent = msg;
             logs.appendChild(line);
             logs.scrollTop = logs.scrollHeight;
         }
@@ -624,27 +627,41 @@
         function copyCode() {
             if (currentCode) {
                 navigator.clipboard.writeText(currentCode).then(() => {
-                    alert('Code copied!');
+                    const btn = event.target;
+                    btn.textContent = '✓ Copied!';
+                    setTimeout(() => {
+                        btn.textContent = '📋 Copy Code';
+                    }, 2000);
                 });
             }
         }
 
         function generateQR(text) {
             const qrDisplay = document.getElementById('qr-display');
-            qrDisplay.innerHTML = ''; // Clear previous
+            qrDisplay.innerHTML = ''; // Clear
             
-            // Generate QR code using QRCode library
-            new QRCode(qrDisplay, {
-                text: text,
-                width: 180,
-                height: 180,
-                colorDark: '#171717',
-                colorLight: '#ffffff',
-                correctLevel: QRCode.CorrectLevel.H
+            // Use QRCode library with proper config
+            QRCode.toCanvas(document.createElement('canvas'), text, {
+                errorCorrectionLevel: 'H',
+                type: 'image/png',
+                quality: 0.95,
+                margin: 1,
+                width: 200,
+                color: {
+                    dark: '#171717',
+                    light: '#ffffff'
+                }
+            }, function(err, canvas) {
+                if (err) {
+                    console.error('QR Error:', err);
+                    qrDisplay.innerHTML = '<p style="color: #888;">QR Error</p>';
+                } else {
+                    qrDisplay.appendChild(canvas);
+                }
             });
         }
 
-        // Service Worker registration for PWA
+        // Service Worker registration
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('sw.js').catch(() => {});
         }
