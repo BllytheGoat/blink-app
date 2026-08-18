@@ -9,6 +9,7 @@
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23171717' width='192' height='192'/><text x='50%' y='50%' font-size='120' fill='white' text-anchor='middle' dominant-baseline='middle' font-weight='600'>B</text></svg>">
     <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%23171717' width='192' height='192' rx='48'/><text x='50%' y='50%' font-size='120' fill='white' text-anchor='middle' dominant-baseline='middle' font-weight='600'>B</text></svg>">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -27,8 +28,6 @@
             --link: #0070f3;
             --gradient-develop-start: #007cf0;
             --gradient-develop-end: #00dfd8;
-            --gradient-preview-start: #7928ca;
-            --gradient-preview-end: #ff0080;
             --font-sans: "Inter", -apple-system, system-ui, sans-serif;
             --font-mono: "JetBrains Mono", "Courier New", monospace;
         }
@@ -242,6 +241,7 @@
             justify-content: center;
             padding: 16px;
             z-index: 1000;
+            overflow-y: auto;
         }
 
         .transfer-modal.active {
@@ -258,6 +258,7 @@
             flex-direction: column;
             gap: 24px;
             box-shadow: 0 24px 32px -8px rgba(0, 0, 0, 0.15);
+            margin: auto;
         }
 
         .qr-section {
@@ -288,7 +289,7 @@
             padding: 8px;
         }
 
-        canvas {
+        #qrcode {
             max-width: 100%;
             height: auto;
         }
@@ -301,6 +302,7 @@
             padding: 12px;
             border-radius: 6px;
             word-break: break-all;
+            user-select: all;
         }
 
         .progress-section {
@@ -364,6 +366,20 @@
             font-size: 14px;
             font-weight: 400;
             line-height: 20px;
+        }
+
+        .copy-btn {
+            background: none;
+            border: 1px solid var(--hairline);
+            color: var(--ink);
+            padding: 6px 12px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .copy-btn:hover {
+            background-color: var(--canvas-soft);
         }
 
         @media (max-width: 600px) {
@@ -432,7 +448,10 @@
             <div id="qr-section" class="qr-section">
                 <p class="caption-mono">Transfer Code</p>
                 <div class="qr-display" id="qr-display"></div>
-                <p class="code-display" id="code-display"></p>
+                <div style="display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center;">
+                    <div class="code-display" id="code-display"></div>
+                    <button class="copy-btn" onclick="copyCode()">Copy</button>
+                </div>
             </div>
 
             <div class="progress-section">
@@ -453,9 +472,9 @@
     <input type="file" id="file-input" multiple onchange="handleFileInput(event)">
 
     <script>
-        const PUBLIC_RELAY = "https://croc.schollz.com";
+        const CROC_RELAY = "https://croc.schollz.com";
         let selectedFiles = [];
-        let currentTransfer = null;
+        let currentCode = null;
 
         function goHome() {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -517,8 +536,10 @@
         async function startSend() {
             if (selectedFiles.length === 0) return;
 
-            // Generate a random code (simplified — real croc uses word-based codes)
-            const code = Math.random().toString(36).substring(2, 8).toUpperCase();
+            // Generate a random code (Croc style: 6-char words)
+            const words = ['apple', 'beach', 'cabin', 'dance', 'eagle', 'frame', 'grace', 'honey', 'index', 'jungle'];
+            const code = Array.from({length: 3}, () => words[Math.floor(Math.random() * words.length)]).join('-');
+            currentCode = code;
 
             document.getElementById('transfer-modal').classList.add('active');
             document.getElementById('qr-section').style.display = 'flex';
@@ -530,13 +551,15 @@
             document.getElementById('cancel-btn').style.display = 'block';
 
             addLog(`Send code: ${code}`);
-            addLog('Waiting for receiver...');
-            addLog(`Public relay: ${PUBLIC_RELAY}`);
+            addLog('Generating QR code...');
 
             // Generate QR code
             generateQR(code);
 
-            // Simulate transfer progress (real implementation would use croc relay)
+            addLog(`Waiting for receiver...`);
+            addLog(`Relay: ${CROC_RELAY}`);
+
+            // Simulate transfer progress
             for (let i = 0; i <= 100; i += 10) {
                 await new Promise(resolve => setTimeout(resolve, 500));
                 document.getElementById('progress-fill').style.width = i + '%';
@@ -562,6 +585,7 @@
 
             addLog(`Receive code: ${code}`);
             addLog('Connecting to sender...');
+            addLog(`Relay: ${CROC_RELAY}`);
 
             for (let i = 0; i <= 100; i += 15) {
                 await new Promise(resolve => setTimeout(resolve, 400));
@@ -578,7 +602,7 @@
             const logs = document.getElementById('logs');
             const line = document.createElement('p');
             line.className = 'log-line';
-            line.textContent = msg;
+            line.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
             logs.appendChild(line);
             logs.scrollTop = logs.scrollHeight;
         }
@@ -597,10 +621,27 @@
             }
         }
 
+        function copyCode() {
+            if (currentCode) {
+                navigator.clipboard.writeText(currentCode).then(() => {
+                    alert('Code copied!');
+                });
+            }
+        }
+
         function generateQR(text) {
-            // Simplified QR — real version would use qrcode.js library
             const qrDisplay = document.getElementById('qr-display');
-            qrDisplay.innerHTML = `<p style="color: #888; font-size: 12px;">QR Code<br>${text}</p>`;
+            qrDisplay.innerHTML = ''; // Clear previous
+            
+            // Generate QR code using QRCode library
+            new QRCode(qrDisplay, {
+                text: text,
+                width: 180,
+                height: 180,
+                colorDark: '#171717',
+                colorLight: '#ffffff',
+                correctLevel: QRCode.CorrectLevel.H
+            });
         }
 
         // Service Worker registration for PWA
