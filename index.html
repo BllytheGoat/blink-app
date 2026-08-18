@@ -384,6 +384,14 @@
             border-color: var(--link);
         }
 
+        .error-msg {
+            color: #ff4444;
+            font-size: 14px;
+            padding: 12px;
+            background-color: rgba(255, 68, 68, 0.1);
+            border-radius: 6px;
+        }
+
         @media (max-width: 600px) {
             .display-xl {
                 font-size: 36px;
@@ -467,6 +475,8 @@
 
             <div class="logs" id="logs"></div>
 
+            <div id="error-container"></div>
+
             <p id="done-message" class="done-message" style="display: none;">✓ Transfer Complete</p>
 
             <button class="button-secondary" id="cancel-btn" onclick="cancelTransfer()">Cancel</button>
@@ -476,8 +486,11 @@
     <input type="file" id="file-input" multiple onchange="handleFileInput(event)">
 
     <script>
+        // Use your deployed backend URL
+        const API_BASE = "https://blink-app.up.railway.app"; // Replace with your actual URL
         let selectedFiles = [];
         let currentCode = null;
+        let currentTransferId = null;
 
         function goHome() {
             document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
@@ -539,66 +552,122 @@
         async function startSend() {
             if (selectedFiles.length === 0) return;
 
-            // Generate a realistic Croc code (6 uppercase alphanumeric)
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            const code = Array.from({length: 6}, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-            currentCode = code;
+            try {
+                // Call backend to initiate send
+                addLog("Initializing transfer...");
+                const response = await fetch(`${API_BASE}/api/send`, { method: 'POST' });
+                const data = await response.json();
 
-            document.getElementById('transfer-modal').classList.add('active');
-            document.getElementById('qr-section').style.display = 'flex';
-            document.getElementById('code-display').textContent = code;
-            document.getElementById('progress-fill').style.width = '0%';
-            document.getElementById('progress-text').textContent = '0%';
-            document.getElementById('logs').innerHTML = '';
-            document.getElementById('done-message').style.display = 'none';
-            document.getElementById('cancel-btn').style.display = 'block';
+                currentCode = data.code;
+                currentTransferId = data.transfer_id;
 
-            addLog(`Send code: ${code}`);
-            addLog('Generating QR code...');
+                document.getElementById('transfer-modal').classList.add('active');
+                document.getElementById('qr-section').style.display = 'flex';
+                document.getElementById('code-display').textContent = currentCode;
+                document.getElementById('progress-fill').style.width = '0%';
+                document.getElementById('progress-text').textContent = '0%';
+                document.getElementById('logs').innerHTML = '';
+                document.getElementById('done-message').style.display = 'none';
+                document.getElementById('error-container').innerHTML = '';
+                document.getElementById('cancel-btn').style.display = 'block';
 
-            // Generate QR code
-            setTimeout(() => generateQR(code), 100);
+                addLog(`Send code: ${currentCode}`);
+                addLog('Generating QR code...');
 
-            addLog('Waiting for receiver...');
-            addLog('Public relay: croc.schollz.com');
+                // Generate QR code
+                setTimeout(() => generateQR(currentCode), 100);
 
-            // Simulate transfer progress
-            for (let i = 0; i <= 100; i += 10) {
-                await new Promise(resolve => setTimeout(resolve, 400));
-                document.getElementById('progress-fill').style.width = i + '%';
-                document.getElementById('progress-text').textContent = i + '%';
-                if (i === 50) addLog('Files transferring...');
+                addLog('Uploading files...');
+                document.getElementById('progress-fill').style.width = '25%';
+                document.getElementById('progress-text').textContent = '25%';
+
+                // Upload files
+                const formData = new FormData();
+                selectedFiles.forEach(file => formData.append('files', file));
+
+                const uploadRes = await fetch(`${API_BASE}/api/upload/${currentCode}`, {
+                    method: 'POST',
+                    body: formData
+                });
+                const uploadData = await uploadRes.json();
+
+                if (uploadRes.ok) {
+                    addLog(`Files uploaded: ${uploadData.files_uploaded.length}`);
+                    document.getElementById('progress-fill').style.width = '50%';
+                    document.getElementById('progress-text').textContent = '50%';
+                    addLog('Waiting for receiver...');
+
+                    // Simulate final progress
+                    for (let i = 50; i <= 100; i += 10) {
+                        await new Promise(resolve => setTimeout(resolve, 400));
+                        document.getElementById('progress-fill').style.width = i + '%';
+                        document.getElementById('progress-text').textContent = i + '%';
+                    }
+
+                    addLog('✓ Transfer complete');
+                    document.getElementById('done-message').style.display = 'block';
+                    document.getElementById('cancel-btn').textContent = 'Done';
+                } else {
+                    showError('Upload failed: ' + uploadData.error);
+                }
+            } catch (err) {
+                showError('Error: ' + err.message);
             }
-
-            document.getElementById('done-message').style.display = 'block';
-            document.getElementById('cancel-btn').textContent = 'Done';
         }
 
         async function startRecv() {
             const code = document.getElementById('code-input').value.trim();
             if (!code) return;
 
-            document.getElementById('transfer-modal').classList.add('active');
-            document.getElementById('qr-section').style.display = 'none';
-            document.getElementById('progress-fill').style.width = '0%';
-            document.getElementById('progress-text').textContent = '0%';
-            document.getElementById('logs').innerHTML = '';
-            document.getElementById('done-message').style.display = 'none';
-            document.getElementById('cancel-btn').style.display = 'block';
+            try {
+                document.getElementById('transfer-modal').classList.add('active');
+                document.getElementById('qr-section').style.display = 'none';
+                document.getElementById('progress-fill').style.width = '0%';
+                document.getElementById('progress-text').textContent = '0%';
+                document.getElementById('logs').innerHTML = '';
+                document.getElementById('done-message').style.display = 'none';
+                document.getElementById('error-container').innerHTML = '';
+                document.getElementById('cancel-btn').style.display = 'block';
 
-            addLog(`Receive code: ${code}`);
-            addLog('Connecting to sender...');
-            addLog('Public relay: croc.schollz.com');
+                addLog(`Receive code: ${code}`);
+                addLog('Connecting to sender...');
+                document.getElementById('progress-fill').style.width = '25%';
+                document.getElementById('progress-text').textContent = '25%';
 
-            for (let i = 0; i <= 100; i += 15) {
-                await new Promise(resolve => setTimeout(resolve, 300));
-                document.getElementById('progress-fill').style.width = i + '%';
-                document.getElementById('progress-text').textContent = i + '%';
-                if (i === 50) addLog('Receiving files...');
+                // Check transfer status
+                const statusRes = await fetch(`${API_BASE}/api/transfer/${code}/status`);
+                if (!statusRes.ok) {
+                    showError('Transfer code not found');
+                    return;
+                }
+
+                const statusData = await statusRes.json();
+                addLog('Connected to sender');
+                document.getElementById('progress-fill').style.width = '50%';
+                document.getElementById('progress-text').textContent = '50%';
+
+                // Receive files
+                const recvRes = await fetch(`${API_BASE}/api/transfer/${code}/receive`, { method: 'POST' });
+                const recvData = await recvRes.json();
+
+                if (recvRes.ok) {
+                    addLog('Receiving files...');
+                    document.getElementById('progress-fill').style.width = '75%';
+                    document.getElementById('progress-text').textContent = '75%';
+
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    document.getElementById('progress-fill').style.width = '100%';
+                    document.getElementById('progress-text').textContent = '100%';
+
+                    addLog(`✓ Received ${recvData.files.length} file(s)`);
+                    document.getElementById('done-message').style.display = 'block';
+                    document.getElementById('cancel-btn').textContent = 'Done';
+                } else {
+                    showError('Receive failed: ' + recvData.error);
+                }
+            } catch (err) {
+                showError('Error: ' + err.message);
             }
-
-            document.getElementById('done-message').style.display = 'block';
-            document.getElementById('cancel-btn').textContent = 'Done';
         }
 
         function addLog(msg) {
@@ -608,6 +677,11 @@
             line.textContent = msg;
             logs.appendChild(line);
             logs.scrollTop = logs.scrollHeight;
+        }
+
+        function showError(msg) {
+            const container = document.getElementById('error-container');
+            container.innerHTML = `<div class="error-msg">❌ ${msg}</div>`;
         }
 
         function cancelTransfer() {
@@ -638,9 +712,8 @@
 
         function generateQR(text) {
             const qrDisplay = document.getElementById('qr-display');
-            qrDisplay.innerHTML = ''; // Clear
+            qrDisplay.innerHTML = '';
             
-            // Use QRCode library with proper config
             QRCode.toCanvas(document.createElement('canvas'), text, {
                 errorCorrectionLevel: 'H',
                 type: 'image/png',
